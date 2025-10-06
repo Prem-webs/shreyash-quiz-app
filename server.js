@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg'); // Switched to PostgreSQL library
 const bcrypt = require('bcrypt');
 const dotenv = require('dotenv');
 const path = require('path');
@@ -12,17 +12,12 @@ dotenv.config();
 const app = express();
 const port = 3000;
 
-// --- MySQL Connection Pool Setup ---
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'prem', // **Ensure this is your correct password!**
-    database: process.env.DB_NAME || 'quiz_competition',
-    // Critical connection settings for robustness
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    insecureAuth: true 
+// --- PostgreSQL Connection Pool Setup ---
+// Renders automatically provides the DATABASE_URL environment variable from your Neon connection string.
+// We fall back to a local connection string if not running on Render.
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'postgres://user:password@localhost:5432/quiz_competition',
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false // Use SSL on Render
 });
 
 // --- Simple Session Storage (In-Memory) ---
@@ -33,11 +28,10 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Helper function to check login status
-const isLoggedIn = (req, res, next) => {
+const isLoggedIn = async (req, res, next) => { // Made async to check DB on fail
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
 
     if (!sessionId || !sessions[sessionId]) {
-        // Redirect to login page for HTML files, respond with 401 for API calls
         return req.accepts('html') ? res.redirect(process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:3000/?error=unauthorized') : res.status(401).json({ message: 'Unauthorized. Please log in.' });
     }
 
@@ -57,8 +51,8 @@ const isAdmin = (req, res, next) => {
 // --- TEMP DATABASE CONNECTION TEST ROUTE ---
 app.get('/test-db', async (req, res) => {
     try {
-        const connection = await pool.getConnection();
-        connection.release();
+        const client = await pool.connect();
+        client.release();
         res.json({ message: 'Database connected successfully!', solution: 2 });
     } catch (error) {
         console.error('Failed to connect to the database:', error.code, error.message);
@@ -71,7 +65,7 @@ app.get('/test-db', async (req, res) => {
 
 app.post('/register', async (req, res) => {
     const { fullName, email, password } = req.body;
-    const role = 'student'; // All general registrations are students
+    const role = 'student'; 
 
     if (!fullName || !email || !password) {
         return res.status(400).json({ message: 'All fields are required.' });
@@ -79,12 +73,14 @@ app.post('/register', async (req, res) => {
 
     try {
         const passwordHash = await bcrypt.hash(password, 10);
-        // Insert new user, setting default quiz_status
-        await pool.query('INSERT INTO users (full_name, email, password_hash, role, quiz_status) VALUES (?, ?, ?, ?, ?)', 
-            [fullName, email, passwordHash, role, 'unattempted']);
+        // Uses double quotes for PostgreSQL compatibility
+        const result = await pool.query(
+            'INSERT INTO "users" ("full_name", "email", "password_hash", "role", "quiz_status") VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [fullName, email, passwordHash, role, 'unattempted']
+        );
         res.status(201).json({ message: 'Registration successful. Please log in.' });
     } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') {
+        if (error.code === '23505') { // PostgreSQL unique constraint violation error code
             return res.status(409).json({ message: 'This email is already registered.' });
         }
         console.error('Registration error:', error);
@@ -94,36 +90,33 @@ app.post('/register', async (req, res) => {
 
 app.post('/login', async (req, res) => {
     const { email, password } = req.body;
-    console.log(`[LOGIN DEBUG] Attempt for: ${email}`); // Debug log
+    console.log(`[LOGIN DEBUG] Attempt for: ${email}`); 
 
     try {
-        // Fetch user data including the new quiz_status
-        const [rows] = await pool.query('SELECT id, password_hash, role, quiz_status FROM users WHERE email = ?', [email]);
-        const user = rows[0];
+        // Uses double quotes for PostgreSQL compatibility
+        const result = await pool.query('SELECT id, password_hash, role, quiz_status FROM "users" WHERE email = $1', [email]);
+        const user = result.rows[0];
 
         if (!user) {
-            console.log(`[LOGIN DEBUG] DB Hash fetched: User not found`); // Debug log
+            console.log(`[LOGIN DEBUG] DB Hash fetched: User not found`); 
             return res.status(401).json({ message: 'Invalid email or password.' });
         }
         
         // --- Lockout Check Bypass (Admin) ---
         if (user.role === 'student') {
-             // --- Student Lockout Check ---
             if (user.quiz_status === 'completed' || user.quiz_status === 'disqualified') {
                 return res.status(403).json({ message: 'Access denied. You have already completed or been disqualified from the quiz.' });
             }
         }
         // --- End Lockout Check ---
 
-        console.log(`[LOGIN DEBUG] DB Hash fetched: ${user.password_hash}`); // Debug log
-        
+        console.log(`[LOGIN DEBUG] DB Hash fetched: ${user.password_hash}`);
         const match = await bcrypt.compare(password, user.password_hash);
-        
-        console.log(`[LOGIN DEBUG] Password match result: ${match}`); // Debug log
+        console.log(`[LOGIN DEBUG] Password match result: ${match}`); 
 
         if (match) {
             const sessionId = `s${user.id}_${Date.now()}`;
-            sessions[sessionId] = { userId: user.id, role: user.role, expiration: Date.now() + 3600000 }; // 1 hour
+            sessions[sessionId] = { userId: user.id, role: user.role, expiration: Date.now() + 3600000 }; 
             res.json({
                 message: 'Login successful.',
                 role: user.role,
@@ -151,25 +144,24 @@ app.post('/logout', (req, res) => {
 // Get total participants and all quiz results for admin dashboard metrics
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
     try {
-        const [totalParticipantsRows] = await pool.query('SELECT COUNT(id) as total FROM users');
-        const totalParticipants = totalParticipantsRows[0].total;
+        const [totalParticipantsRows] = (await pool.query('SELECT COUNT(id) as total FROM "users"')).rows;
+        const totalParticipants = totalParticipantsRows.total;
 
-        const [results] = await pool.query(`
+        const results = (await pool.query(`
             SELECT 
                 u.full_name, 
                 u.email,
                 a.score, 
                 a.created_at,
                 a.end_time
-            FROM attempts a
-            JOIN users u ON a.user_id = u.id
+            FROM "attempts" a
+            JOIN "users" u ON a.user_id = u.id
             WHERE a.status = 'completed'
             ORDER BY a.score DESC, a.end_time ASC
-        `);
+        `)).rows;
 
-        // Get total number of questions for context
-        const [questionCountRows] = await pool.query('SELECT COUNT(id) as total FROM questions');
-        const totalQuestions = questionCountRows[0].total;
+        const [questionCountRows] = (await pool.query('SELECT COUNT(id) as total FROM "questions"')).rows;
+        const totalQuestions = questionCountRows.total;
         
         res.json({
             totalParticipants: totalParticipants,
@@ -185,7 +177,7 @@ app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
 // Admin Question Management (CRUD)
 app.get('/admin/questions', isLoggedIn, isAdmin, async (req, res) => {
     try {
-        const [questions] = await pool.query('SELECT * FROM questions ORDER BY id DESC');
+        const questions = (await pool.query('SELECT * FROM "questions" ORDER BY id DESC')).rows;
         res.json(questions);
     } catch (error) {
         console.error('Error fetching questions:', error);
@@ -202,7 +194,7 @@ app.post('/admin/questions', isLoggedIn, isAdmin, async (req, res) => {
 
     try {
         await pool.query(
-            'INSERT INTO questions (question_text, option_a, option_b, option_c, option_d, correct_option) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO "questions" ("question_text", "option_a", "option_b", "option_c", "option_d", "correct_option") VALUES ($1, $2, $3, $4, $5, $6)',
             [questionText, optionA, optionB, optionC, optionD, correctOption]
         );
         res.status(201).json({ message: 'Question added successfully.' });
@@ -216,7 +208,7 @@ app.delete('/admin/questions/:id', isLoggedIn, isAdmin, async (req, res) => {
     const questionId = req.params.id;
 
     try {
-        await pool.query('DELETE FROM questions WHERE id = ?', [questionId]);
+        await pool.query('DELETE FROM "questions" WHERE id = $1', [questionId]);
         res.json({ message: 'Question deleted successfully.' });
     } catch (error) {
         console.error('Error deleting question:', error);
@@ -231,30 +223,25 @@ app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
     const QUIZ_LENGTH = 10;
 
     try {
-        // --- Student Lockout Check (Prevent starting if already completed/disqualified) ---
-        const [userStatusRows] = await pool.query("SELECT quiz_status FROM users WHERE id = ?", [userId]);
-        const userStatus = userStatusRows[0].quiz_status;
+        const userStatusResult = await pool.query("SELECT quiz_status FROM \"users\" WHERE id = $1", [userId]);
+        const userStatus = userStatusResult.rows[0].quiz_status;
 
         if (userStatus === 'completed' || userStatus === 'disqualified') {
             return res.status(403).json({ message: 'Access denied. You have already completed or been disqualified from the quiz.' });
         }
-        // --- End Student Lockout Check ---
         
-        // --- ANTI-CHEATING ACTIVATED: Check for active attempt ---
-        const [activeAttempts] = await pool.query("SELECT id FROM attempts WHERE user_id = ? AND status = 'started'", [userId]);
-        if (activeAttempts.length > 0) {
-            // User is already in a test session and cannot start a new one
+        const activeAttempts = await pool.query("SELECT id FROM \"attempts\" WHERE user_id = $1 AND status = 'started'", [userId]);
+        if (activeAttempts.rows.length > 0) {
             return res.status(409).json({ message: 'Quiz already in progress. Please finish your existing attempt.' });
         }
-        // --- END ANTI-CHEATING CHECK ---
 
-        const [allQuestions] = await pool.query('SELECT id FROM questions');
+        const allQuestionsResult = await pool.query('SELECT id FROM "questions"');
+        const allQuestions = allQuestionsResult.rows;
         
         if (allQuestions.length < QUIZ_LENGTH) {
             return res.status(400).json({ message: `Need at least ${QUIZ_LENGTH} questions to start the quiz.` });
         }
 
-        // Shuffle and select the first 10 question IDs
         const shuffledIds = allQuestions.map(q => q.id).sort(() => 0.5 - Math.random());
         const questionIds = shuffledIds.slice(0, QUIZ_LENGTH);
 
@@ -262,16 +249,16 @@ app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
         const shuffledQuestionsJson = JSON.stringify(questionIds);
         
         // Update user status to 'started' and insert attempt
-        await pool.query('UPDATE users SET quiz_status = ? WHERE id = ?', ['started', userId]);
+        await pool.query('UPDATE "users" SET quiz_status = $1 WHERE id = $2', ['started', userId]);
         
-        const [result] = await pool.query(
-            'INSERT INTO attempts (user_id, shuffled_questions, status, score) VALUES (?, ?, ?, NULL)',
-            [userId, shuffledQuestionsJson, 'started']
+        const result = await pool.query(
+            'INSERT INTO "attempts" ("user_id", "shuffled_questions", "status", "score") VALUES ($1, $2, $3, $4) RETURNING id',
+            [userId, shuffledQuestionsJson, 'started', null]
         );
 
         res.json({
             message: 'Quiz started!',
-            attemptId: result.insertId,
+            attemptId: result.rows[0].id,
             questionIds: questionIds,
             startTime: startTime
         });
@@ -295,12 +282,13 @@ app.get('/questions', isLoggedIn, async (req, res) => {
         return res.status(400).json({ message: 'Invalid question IDs provided.' });
     }
     
-    // Construct the query with proper placeholders
-    const placeholders = idArray.map(() => '?').join(',');
-    const query = `SELECT id, question_text, option_a, option_b, option_c, option_d FROM questions WHERE id IN (${placeholders})`;
+    // Convert IDs into a format for PostgreSQL's IN clause
+    const placeholders = idArray.map((_, i) => `$${i + 1}`).join(',');
+    const query = `SELECT id, question_text, option_a, option_b, option_c, option_d FROM "questions" WHERE id IN (${placeholders})`;
 
     try {
-        const [questions] = await pool.query(query, idArray);
+        const questionsResult = await pool.query(query, idArray);
+        const questions = questionsResult.rows;
         
         // Sort the questions based on the order of IDs in the original request
         const orderedQuestions = idArray.map(id => questions.find(q => q.id === id));
@@ -324,22 +312,24 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
 
     try {
         // 1. Get the current attempt and the list of question IDs
-        const [attemptRows] = await pool.query('SELECT JSON_UNQUOTE(shuffled_questions) AS shuffled_questions_str FROM attempts WHERE id = ? AND user_id = ? AND status = "started"', [attemptId, userId]);
+        const attemptRows = await pool.query('SELECT shuffled_questions FROM "attempts" WHERE id = $1 AND user_id = $2 AND status = $3', [attemptId, userId, 'started']);
 
-        if (attemptRows.length === 0) {
+        if (attemptRows.rows.length === 0) {
             // Check if it's already completed and return a special status
-            const [completedRows] = await pool.query('SELECT score FROM attempts WHERE id = ? AND user_id = ? AND status = "completed"', [attemptId, userId]);
-            if (completedRows.length > 0) {
-                return res.status(200).json({ message: 'Quiz already submitted.', score: completedRows[0].score, totalQuestions: 10 });
+            const completedRows = await pool.query('SELECT score FROM "attempts" WHERE id = $1 AND user_id = $2 AND status = $3', [attemptId, userId, 'completed']);
+            if (completedRows.rows.length > 0) {
+                return res.status(200).json({ message: 'Quiz already submitted.', score: completedRows.rows[0].score, totalQuestions: 10 });
             }
             return res.status(404).json({ message: 'Active quiz attempt not found or invalid user.' });
         }
         
-        const questionIds = JSON.parse(attemptRows[0].shuffled_questions_str);
+        // PostgreSQL returns JSON/JSONB fields as JavaScript objects, no need for JSON.parse()
+        const questionIds = attemptRows.rows[0].shuffled_questions;
         
         // 2. Fetch the correct answers for all questions in the quiz
-        const placeholders = questionIds.map(() => '?').join(',');
-        const [correctAnswers] = await pool.query(`SELECT id, correct_option FROM questions WHERE id IN (${placeholders})`, questionIds);
+        const placeholders = questionIds.map((_, i) => `$${i + 1}`).join(',');
+        const correctAnswersResult = await pool.query(`SELECT id, correct_option FROM "questions" WHERE id IN (${placeholders})`, questionIds);
+        const correctAnswers = correctAnswersResult.rows;
 
         const correctAnswersMap = correctAnswers.reduce((map, q) => {
             if (q.correct_option) {
@@ -366,11 +356,11 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
 
         // 4. Update the attempt record and permanently lock the user
         await pool.query(
-            'UPDATE attempts SET status = "completed", score = ?, end_time = ? WHERE id = ?',
-            [score, endTime, attemptId]
+            'UPDATE "attempts" SET status = $1, score = $2, end_time = $3 WHERE id = $4',
+            ['completed', score, endTime, attemptId]
         );
         
-        await pool.query('UPDATE users SET quiz_status = ? WHERE id = ?', [finalQuizStatus, userId]);
+        await pool.query('UPDATE "users" SET quiz_status = $1 WHERE id = $2', [finalQuizStatus, userId]);
 
         res.json({
             message: 'Quiz submitted successfully!',
@@ -388,17 +378,17 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
 
 app.get('/leaderboard-data', isLoggedIn, async (req, res) => {
     try {
-        const [topScores] = await pool.query(`
+        const topScores = (await pool.query(`
             SELECT 
                 u.full_name, 
                 a.score, 
                 a.created_at
-            FROM attempts a
-            JOIN users u ON a.user_id = u.id
+            FROM "attempts" a
+            JOIN "users" u ON a.user_id = u.id
             WHERE a.status = 'completed' AND u.quiz_status != 'disqualified'
             ORDER BY a.score DESC, a.end_time ASC
             LIMIT 10
-        `);
+        `)).rows;
 
         res.json(topScores);
     } catch (error) {
