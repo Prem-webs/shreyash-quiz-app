@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .metric-card {
+            transition: transform 0.2s;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-start min-h-screen pt-10 pb-10">
+    <div class="w-full max-w-4xl bg-white p-8 rounded-xl shadow-2xl border border-gray-100">
+        <header class="flex justify-between items-center mb-8 pb-4 border-b border-gray-200">
+            <h1 class="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
+            <div class="space-x-3">
+                <button id="view-leaderboard-btn"
+                    class="py-2 px-4 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 ease-in-out">
+                    View Public Leaderboard
+                </button>
+                <button id="logout-btn"
+                    class="py-2 px-4 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition duration-150 ease-in-out">
+                    Logout
+                </button>
+            </div>
+        </header>
+
+        <!-- Metrics Section -->
+        <section class="mb-10">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Competition Overview</h2>
+            <div id="metrics-container" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Total Participants Card -->
+                <div class="metric-card bg-blue-50 border border-blue-200 p-6 rounded-xl shadow-md">
+                    <p class="text-sm font-medium text-blue-600">Total Participants</p>
+                    <p id="metric-participants" class="text-4xl font-bold text-blue-800 mt-1">...</p>
+                </div>
+                <!-- Total Questions Card -->
+                <div class="metric-card bg-yellow-50 border border-yellow-200 p-6 rounded-xl shadow-md">
+                    <p class="text-sm font-medium text-yellow-600">Total Questions</p>
+                    <p id="metric-questions" class="text-4xl font-bold text-yellow-800 mt-1">...</p>
+                </div>
+                <!-- Completed Quizzes Card -->
+                <div class="metric-card bg-green-50 border border-green-200 p-6 rounded-xl shadow-md">
+                    <p class="text-sm font-medium text-green-600">Completed Quizzes</p>
+                    <p id="metric-completed" class="text-4xl font-bold text-green-800 mt-1">...</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Tab Navigation for Content -->
+        <div class="flex border-b mb-6">
+            <button id="tab-add" class="flex-1 py-2 text-lg font-semibold border-b-2 border-indigo-600 text-indigo-600 transition duration-150">Add/Manage Questions</button>
+            <button id="tab-results" class="flex-1 py-2 text-lg font-semibold border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600 transition duration-150">View All Results</button>
+        </div>
+
+        <!-- 1. Add/Manage Questions Tab -->
+        <section id="question-management-section">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Add New Question</h2>
+            <form id="add-question-form" class="space-y-4 p-6 border border-gray-200 rounded-lg shadow-inner mb-8">
+                <div id="form-message" class="hidden p-3 rounded-lg text-sm" role="alert"></div>
+                
+                <div>
+                    <label for="question-text-input" class="block text-sm font-medium text-gray-700">Question Text</label>
+                    <textarea id="question-text-input" rows="3" required
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <input type="text" id="option-a-input" placeholder="Option A" required class="col-span-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm">
+                    <input type="text" id="option-b-input" placeholder="Option B" required class="col-span-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm">
+                    <input type="text" id="option-c-input" placeholder="Option C" required class="col-span-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm">
+                    <input type="text" id="option-d-input" placeholder="Option D" required class="col-span-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm">
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <label for="correct-option-input" class="text-sm font-medium text-gray-700">Correct Option</label>
+                    <select id="correct-option-input" required class="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none">
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                    </select>
+                </div>
+
+                <button type="submit"
+                    class="w-full py-3 px-4 rounded-lg shadow-md text-lg font-medium text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
+                    Add Question
+                </button>
+            </form>
+
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Current Questions</h2>
+            <div id="question-list-container" class="space-y-3">
+                <!-- Questions will be dynamically loaded here -->
+                <p id="loading-questions" class="text-center text-gray-500">Loading questions...</p>
+            </div>
+        </section>
+
+        <!-- 2. View All Results Tab -->
+        <section id="results-section" class="hidden">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Detailed Quiz Results (All Attempts)</h2>
+            <div id="results-message-area" class="text-center text-gray-500 mb-4">Loading results...</div>
+            
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Results rows will be dynamically inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+        let sessionId = '';
+        let totalQuestionCount = 0;
+
+        // --- DOM Elements ---
+        const logoutBtn = document.getElementById('logout-btn');
+        const addQuestionForm = document.getElementById('add-question-form');
+        const formMessage = document.getElementById('form-message');
+        const questionListContainer = document.getElementById('question-list-container');
+        const loadingQuestions = document.getElementById('loading-questions');
+        const viewLeaderboardBtn = document.getElementById('view-leaderboard-btn');
+        
+        const tabAdd = document.getElementById('tab-add');
+        const tabResults = document.getElementById('tab-results');
+        const questionSection = document.getElementById('question-management-section');
+        const resultsSection = document.getElementById('results-section');
+
+        // Metrics elements
+        const metricParticipants = document.getElementById('metric-participants');
+        const metricQuestions = document.getElementById('metric-questions');
+        const metricCompleted = document.getElementById('metric-completed');
+        const resultsTableBody = document.getElementById('results-table-body');
+        const resultsMessageArea = document.getElementById('results-message-area');
+
+
+        // --- Utility Functions ---
+
+        const displayMessage = (element, message, isSuccess) => {
+            element.textContent = message;
+            element.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
+            if (isSuccess) {
+                element.classList.add('bg-green-100', 'text-green-700');
+            } else {
+                element.classList.add('bg-red-100', 'text-red-700');
+            }
+        };
+        
+        // --- Core Functions ---
+
+        const fetchMetrics = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/admin/metrics`, {
+                    headers: { 'x-session-id': sessionId }
+                });
+
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = `${API_BASE_URL}/?error=unauthorized`;
+                    return;
+                }
+
+                const data = await response.json();
+                
+                // --- FIX: Ensure data is valid before accessing properties ---
+                if (!data || typeof data.totalParticipants === 'undefined') {
+                    throw new Error("Invalid data structure received from metrics endpoint.");
+                }
+
+                // Update Metric Cards
+                metricParticipants.textContent = data.totalParticipants;
+                metricQuestions.textContent = data.totalQuestions;
+                totalQuestionCount = data.totalQuestions; // Store for local use
+                
+                const completedCount = data.results ? data.results.length : 0;
+                metricCompleted.textContent = completedCount;
+                
+                // Render All Results Table
+                renderResultsTable(data.results, data.totalQuestions);
+
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                // Set to 'Err' on failure, but log the specific error
+                metricParticipants.textContent = 'Err';
+                metricQuestions.textContent = 'Err';
+                metricCompleted.textContent = 'Err';
+            }
+        };
+
+        const renderResultsTable = (results, totalQuestions) => {
+            resultsTableBody.innerHTML = '';
+            
+            if (!results || results.length === 0) {
+                resultsMessageArea.textContent = 'No quizzes have been completed yet.';
+                return;
+            }
+            
+            resultsMessageArea.classList.add('hidden');
+            
+            results.forEach((result, index) => {
+                const rank = index + 1;
+                const row = resultsTableBody.insertRow();
+                
+                let rankClass = '';
+                if (rank === 1) rankClass = 'bg-yellow-100';
+                else if (rank === 2) rankClass = 'bg-gray-100';
+                else if (rank === 3) rankClass = 'bg-red-100';
+
+                const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', {
+                    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+
+                row.classList.add(rankClass);
+                row.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-bold text-gray-900">${rank}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${result.full_name}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${result.email}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-center text-lg font-bold text-indigo-600">${result.score} / ${totalQuestions}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${formattedDate}</td>
+                `;
+            });
+        };
+
+        const fetchQuestions = async () => {
+            loadingQuestions.classList.remove('hidden');
+            questionListContainer.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/admin/questions`, {
+                    headers: { 'x-session-id': sessionId }
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to fetch questions.");
+                }
+
+                const questions = await response.json();
+                loadingQuestions.classList.add('hidden');
+
+                if (questions.length === 0) {
+                    questionListContainer.innerHTML = '<p class="text-center text-gray-500">No questions found. Add one above.</p>';
+                    return;
+                }
+
+                questions.forEach(q => {
+                    const questionCard = document.createElement('div');
+                    questionCard.classList.add('p-4', 'border', 'border-gray-200', 'rounded-lg', 'bg-white', 'shadow-sm');
+                    questionCard.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <p class="text-lg font-semibold text-gray-800">${q.question_text}</p>
+                            <button data-id="${q.id}" class="delete-btn text-red-500 hover:text-red-700 ml-4 transition duration-150">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 6h6v10H7V6z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="space-y-1 text-sm">
+                            <p class="${q.correct_option === 'A' ? 'text-green-600 font-medium' : 'text-gray-600'}">A: ${q.option_a}</p>
+                            <p class="${q.correct_option === 'B' ? 'text-green-600 font-medium' : 'text-gray-600'}">B: ${q.option_b}</p>
+                            <p class="${q.correct_option === 'C' ? 'text-green-600 font-medium' : 'text-gray-600'}">C: ${q.option_c}</p>
+                            <p class="${q.correct_option === 'D' ? 'text-green-600 font-medium' : 'text-gray-600'}">D: ${q.option_d}</p>
+                        </div>
+                    `;
+                    questionListContainer.appendChild(questionCard);
+                });
+
+                // Attach delete listeners
+                questionListContainer.querySelectorAll('.delete-btn').forEach(button => {
+                    button.addEventListener('click', deleteQuestion);
+                });
+
+            } catch (error) {
+                console.error('Error fetching questions:', error);
+                loadingQuestions.textContent = 'Failed to load questions.';
+            }
+        };
+
+        const deleteQuestion = async (e) => {
+            const questionId = e.currentTarget.dataset.id;
+            
+            if (confirm(`Are you sure you want to delete question ID ${questionId}? This action cannot be undone.`)) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/admin/questions/${questionId}`, {
+                        method: 'DELETE',
+                        headers: { 'x-session-id': sessionId }
+                    });
+
+                    if (response.ok) {
+                        displayMessage(formMessage, 'Question deleted successfully.', true);
+                        fetchQuestions(); // Refresh list
+                        fetchMetrics(); // Update question count
+                    } else {
+                        const result = await response.json();
+                        displayMessage(formMessage, result.message || 'Failed to delete question.', false);
+                    }
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    displayMessage(formMessage, 'Network error during delete.', false);
+                }
+            }
+        };
+
+
+        // --- Event Listeners ---
+
+        addQuestionForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            formMessage.classList.add('hidden');
+
+            const data = {
+                questionText: document.getElementById('question-text-input').value,
+                optionA: document.getElementById('option-a-input').value,
+                optionB: document.getElementById('option-b-input').value,
+                optionC: document.getElementById('option-c-input').value,
+                optionD: document.getElementById('option-d-input').value,
+                correctOption: document.getElementById('correct-option-input').value,
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/admin/questions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
+                    body: JSON.stringify(data),
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    displayMessage(formMessage, 'Question added successfully.', true);
+                    addQuestionForm.reset();
+                    fetchQuestions(); // Refresh list
+                    fetchMetrics(); // Update question count
+                } else {
+                    displayMessage(formMessage, result.message || 'Failed to add question.', false);
+                }
+            } catch (error) {
+                console.error('Add question error:', error);
+                displayMessage(formMessage, 'Network error during submission.', false);
+            }
+        });
+        
+        tabAdd.addEventListener('click', () => {
+            tabAdd.classList.add('border-indigo-600', 'text-indigo-600');
+            tabAdd.classList.remove('border-transparent', 'text-gray-500');
+            tabResults.classList.remove('border-indigo-600', 'text-indigo-600');
+            tabResults.classList.add('border-transparent', 'text-gray-500');
+            questionSection.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+        });
+
+        tabResults.addEventListener('click', () => {
+            tabResults.classList.add('border-indigo-600', 'text-indigo-600');
+            tabResults.classList.remove('border-transparent', 'text-gray-500');
+            tabAdd.classList.remove('border-indigo-600', 'text-indigo-600');
+            tabAdd.classList.add('border-transparent', 'text-gray-500');
+            questionSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+        });
+
+
+        // --- Initialization ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            sessionId = urlParams.get('sessionId') || localStorage.getItem('sessionId');
+
+            if (!sessionId) {
+                window.location.href = `${API_BASE_URL}/?error=unauthorized`;
+                return;
+            }
+
+            // Set the URL for the View Public Leaderboard button
+            viewLeaderboardBtn.addEventListener('click', () => {
+                window.location.href = `${API_BASE_URL}/leaderboard.html?sessionId=${sessionId}`;
+            });
+
+            // Set up Logout
+            logoutBtn.addEventListener('click', async () => {
+                await fetch(`${API_BASE_URL}/logout`, {
+                    method: 'POST',
+                    headers: { 'x-session-id': sessionId }
+                });
+                localStorage.removeItem('sessionId');
+                window.location.href = `${API_BASE_URL}/`;
+            });
+            
+            // Initial Data Load
+            fetchMetrics();
+            fetchQuestions(); 
+        });
+    </script>
+</body>
+</html>

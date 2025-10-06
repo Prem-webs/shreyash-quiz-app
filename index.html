@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shreyash Polytechnic Quiz Login</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-2xl border border-gray-100">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Shreyash Polytechnic Quiz</h1>
+        <p class="text-center text-gray-600 mb-6">Competition Organized by the Polytechnic</p>
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b mb-6">
+            <button id="tab-student" class="flex-1 py-2 text-lg font-semibold border-b-2 border-indigo-600 text-indigo-600 transition duration-150">Student</button>
+            <button id="tab-admin" class="flex-1 py-2 text-lg font-semibold border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600 transition duration-150">Admin</button>
+        </div>
+
+        <!-- Dynamic Content Area -->
+        <div id="auth-container">
+            <!-- Student Login/Register View -->
+            <div id="student-auth-view">
+                <div id="login-view">
+                    <h2 class="text-2xl font-semibold text-center text-indigo-700 mb-6">Student Login</h2>
+                    <form id="login-form" class="space-y-4">
+                        <!-- Message Display Area -->
+                        <div id="login-message" class="hidden p-3 rounded-lg text-sm" role="alert"></div>
+
+                        <div>
+                            <label for="login-email" class="block text-sm font-medium text-gray-700">Email</label>
+                            <input type="email" id="login-email" name="email" required
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 transition duration-150">
+                        </div>
+                        <div>
+                            <label for="login-password" class="block text-sm font-medium text-gray-700">Password</label>
+                            <input type="password" id="login-password" name="password" required
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 transition duration-150">
+                        </div>
+
+                        <button type="submit"
+                            class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+                            Log In
+                        </button>
+                    </form>
+                    <p class="mt-4 text-center text-sm text-gray-600">
+                        Don't have an account? <a href="#" id="show-register" class="font-medium text-indigo-600 hover:text-indigo-500">Register here</a>
+                    </p>
+                </div>
+
+                <!-- Student Registration Form -->
+                <div id="register-view" class="hidden">
+                    <h2 class="text-2xl font-semibold text-center text-green-700 mb-6">Student Registration</h2>
+                    <form id="register-form" class="space-y-4">
+                        <div id="register-message" class="hidden p-3 rounded-lg text-sm" role="alert"></div>
+                        <div>
+                            <label for="register-name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                            <input type="text" id="register-name" name="fullName" required
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 transition duration-150">
+                        </div>
+                        <div>
+                            <label for="register-email" class="block text-sm font-medium text-gray-700">Email</label>
+                            <input type="email" id="register-email" name="email" required
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 transition duration-150">
+                        </div>
+                        <div>
+                            <label for="register-password" class="block text-sm font-medium text-gray-700">Password</label>
+                            <input type="password" id="register-password" name="password" required
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 transition duration-150">
+                        </div>
+
+                        <button type="submit"
+                            class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">
+                            Register
+                        </button>
+                    </form>
+                    <p class="mt-4 text-center text-sm text-gray-600">
+                        Already have an account? <a href="#" id="show-login" class="font-medium text-indigo-600 hover:text-indigo-500">Log in here</a>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Admin Login View -->
+            <div id="admin-auth-view" class="hidden">
+                <h2 class="text-2xl font-semibold text-center text-red-700 mb-6">Admin Login</h2>
+                <form id="admin-login-form" class="space-y-4">
+                    <div id="admin-login-message" class="hidden p-3 rounded-lg text-sm" role="alert"></div>
+                    <div>
+                        <label for="admin-email" class="block text-sm font-medium text-gray-700">Admin Email</label>
+                        <input type="email" id="admin-email" name="email" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 transition duration-150">
+                    </div>
+                    <div>
+                        <label for="admin-password" class="block text-sm font-medium text-gray-700">Password</label>
+                        <input type="password" id="admin-password" name="password" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 transition duration-150">
+                    </div>
+
+                    <button type="submit"
+                        class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition duration-150 ease-in-out">
+                        Admin Log In
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const studentAuthView = document.getElementById('student-auth-view');
+            const adminAuthView = document.getElementById('admin-auth-view');
+            const tabStudent = document.getElementById('tab-student');
+            const tabAdmin = document.getElementById('tab-admin');
+
+            const loginView = document.getElementById('login-view');
+            const registerView = document.getElementById('register-view');
+            const showRegister = document.getElementById('show-register');
+            const showLogin = document.getElementById('show-login');
+            
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const adminLoginForm = document.getElementById('admin-login-form');
+
+            const loginMessage = document.getElementById('login-message');
+            const registerMessage = document.getElementById('register-message');
+            const adminLoginMessage = document.getElementById('admin-login-message');
+
+            const API_BASE_URL = window.location.origin;
+
+            // --- Tab Handlers ---
+            tabStudent.addEventListener('click', () => {
+                tabStudent.classList.add('border-indigo-600', 'text-indigo-600');
+                tabStudent.classList.remove('border-transparent', 'text-gray-500');
+                tabAdmin.classList.remove('border-indigo-600', 'text-indigo-600');
+                tabAdmin.classList.add('border-transparent', 'text-gray-500');
+                
+                studentAuthView.classList.remove('hidden');
+                adminAuthView.classList.add('hidden');
+            });
+
+            tabAdmin.addEventListener('click', () => {
+                tabAdmin.classList.add('border-indigo-600', 'text-indigo-600');
+                tabAdmin.classList.remove('border-transparent', 'text-gray-500');
+                tabStudent.classList.remove('border-indigo-600', 'text-indigo-600');
+                tabStudent.classList.add('border-transparent', 'text-gray-500');
+
+                adminAuthView.classList.remove('hidden');
+                studentAuthView.classList.add('hidden');
+            });
+
+
+            // --- Student View Handlers ---
+            showRegister.addEventListener('click', (e) => {
+                e.preventDefault();
+                loginView.classList.add('hidden');
+                registerView.classList.remove('hidden');
+                loginMessage.classList.add('hidden');
+            });
+
+            showLogin.addEventListener('click', (e) => {
+                e.preventDefault();
+                registerView.classList.add('hidden');
+                loginView.classList.remove('hidden');
+                registerMessage.classList.add('hidden');
+            });
+
+            // Helper to display messages
+            const displayMessage = (element, message, isSuccess) => {
+                element.textContent = message;
+                element.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
+                if (isSuccess) {
+                    element.classList.add('bg-green-100', 'text-green-700');
+                } else {
+                    element.classList.add('bg-red-100', 'text-red-700');
+                }
+            };
+
+            // --- Registration Logic ---
+            registerForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                registerMessage.classList.add('hidden');
+
+                const data = {
+                    fullName: document.getElementById('register-name').value,
+                    email: document.getElementById('register-email').value,
+                    password: document.getElementById('register-password').value,
+                };
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        displayMessage(registerMessage, result.message, true);
+                        registerForm.reset();
+                        setTimeout(() => {
+                            showLogin.click();
+                            displayMessage(loginMessage, "Registration successful. Please log in.", true);
+                        }, 1000);
+                    } else {
+                        displayMessage(registerMessage, result.message || 'Registration failed.', false);
+                    }
+                } catch (error) {
+                    console.error('Registration fetch error:', error);
+                    displayMessage(registerMessage, 'An unexpected error occurred. Please try again.', false);
+                }
+            });
+
+            // --- Generic Login Function ---
+            const handleLogin = async (formId, messageElement, isAdminAttempt = false) => {
+                messageElement.classList.add('hidden');
+
+                const email = document.getElementById(formId === 'login-form' ? 'login-email' : 'admin-email').value;
+                const password = document.getElementById(formId === 'login-form' ? 'login-password' : 'admin-password').value;
+
+                const data = { email, password };
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        const sessionId = result.sessionId;
+                        const role = result.role;
+
+                        if (isAdminAttempt && role !== 'admin') {
+                            displayMessage(messageElement, 'Access denied. Account is not an administrator.', false);
+                            return;
+                        }
+
+                        localStorage.setItem('sessionId', sessionId);
+
+                        let redirectUrl;
+                        if (role === 'admin') {
+                            redirectUrl = `${API_BASE_URL}/admin.html?sessionId=${sessionId}`;
+                        } else {
+                            redirectUrl = `${API_BASE_URL}/student.html?sessionId=${sessionId}`;
+                        }
+
+                        window.location.href = redirectUrl;
+
+                    } else {
+                        displayMessage(messageElement, result.message || 'An unexpected error occurred. Please try again.', false);
+                    }
+                } catch (error) {
+                    console.error('Login fetch error:', error);
+                    displayMessage(messageElement, 'An unexpected error occurred. Please try again.', false);
+                }
+            };
+
+            // --- Attach Listeners to Login Forms ---
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleLogin('login-form', loginMessage, false); // Student login attempt
+            });
+
+            adminLoginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleLogin('admin-login-form', adminLoginMessage, true); // Admin login attempt
+            });
+
+
+            // Check URL for session error on load
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('error') === 'unauthorized') {
+                displayMessage(loginMessage, 'Session expired or unauthorized access. Please log in again.', false);
+            }
+        });
+    </script>
+</body>
+</html>
