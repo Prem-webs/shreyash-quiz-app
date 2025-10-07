@@ -31,6 +31,7 @@ const isLoggedIn = async (req, res, next) => {
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
 
     if (!sessionId || !sessions[sessionId]) {
+        // Redirect to login page for HTML files, respond with 401 for API calls
         return req.accepts('html') ? res.redirect(process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:3000/?error=unauthorized') : res.status(401).json({ message: 'Unauthorized. Please log in.' });
     }
 
@@ -330,7 +331,6 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
             return res.status(404).json({ message: 'Active quiz attempt not found or invalid user.' });
         }
         
-        // PostgreSQL returns JSON/JSONB fields as JavaScript objects
         const questionIds = attemptRows.rows[0].shuffled_questions;
         
         // 2. Fetch the correct answers for all questions in the quiz
