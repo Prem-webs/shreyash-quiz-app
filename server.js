@@ -13,8 +13,7 @@ const app = express();
 const port = 3000;
 
 // --- PostgreSQL Connection Pool Setup ---
-// Renders automatically provides the DATABASE_URL environment variable from your Neon connection string.
-// We fall back to a local connection string if not running on Render.
+// Render automatically provides the DATABASE_URL environment variable from your Neon connection string.
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgres://user:password@localhost:5432/quiz_competition',
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false // Use SSL on Render
@@ -28,7 +27,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Helper function to check login status
-const isLoggedIn = async (req, res, next) => { // Made async to check DB on fail
+const isLoggedIn = async (req, res, next) => {
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
 
     if (!sessionId || !sessions[sessionId]) {
@@ -73,9 +72,10 @@ app.post('/register', async (req, res) => {
 
     try {
         const passwordHash = await bcrypt.hash(password, 10);
+        
         // Uses double quotes for PostgreSQL compatibility
-        const result = await pool.query(
-            'INSERT INTO "users" ("full_name", "email", "password_hash", "role", "quiz_status") VALUES ($1, $2, $3, $4, $5) RETURNING id',
+        await pool.query(
+            'INSERT INTO "users" ("full_name", "email", "password_hash", "role", "quiz_status") VALUES ($1, $2, $3, $4, $5)',
             [fullName, email, passwordHash, role, 'unattempted']
         );
         res.status(201).json({ message: 'Registration successful. Please log in.' });
@@ -144,9 +144,8 @@ app.post('/logout', (req, res) => {
 // Get total participants and all quiz results for admin dashboard metrics
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
     try {
-        // FIXED: Using COUNT(*) and retrieving the value explicitly for Postgres
-        const totalParticipantsRows = await pool.query('SELECT COUNT(*) AS total FROM "users"');
-        const totalParticipants = parseInt(totalParticipantsRows.rows[0].total); // Parse string to integer
+        const totalParticipantsRows = (await pool.query('SELECT COUNT(id) as total FROM "users"')).rows;
+        const totalParticipants = parseInt(totalParticipantsRows[0].total, 10);
 
         const results = (await pool.query(`
             SELECT 
@@ -161,8 +160,8 @@ app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
             ORDER BY a.score DESC, a.end_time ASC
         `)).rows;
 
-        const questionCountRows = await pool.query('SELECT COUNT(id) as total FROM "questions"');
-        const totalQuestions = parseInt(questionCountRows.rows[0].total); // Parse string to integer
+        const questionCountRows = (await pool.query('SELECT COUNT(id) as total FROM "questions"')).rows;
+        const totalQuestions = parseInt(questionCountRows[0].total, 10);
         
         res.json({
             totalParticipants: totalParticipants,
