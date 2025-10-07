@@ -145,6 +145,7 @@ app.post('/logout', (req, res) => {
 // Get total participants and all quiz results for admin dashboard metrics
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
     try {
+        // FIX: Casting to ::int ensures the result is correctly parsed as a number
         const totalParticipantsRows = (await pool.query('SELECT COUNT(id)::int as total FROM "users"')).rows;
         const totalParticipants = totalParticipantsRows[0].total;
 
@@ -161,6 +162,7 @@ app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
             ORDER BY a.score DESC, a.end_time ASC
         `)).rows;
 
+        // FIX: Casting to ::int ensures the result is correctly parsed as a number
         const questionCountRows = (await pool.query('SELECT COUNT(id)::int as total FROM "questions"')).rows;
         const totalQuestions = questionCountRows[0].total;
         
@@ -228,7 +230,7 @@ app.delete('/admin/questions/:id', isLoggedIn, isAdmin, async (req, res) => {
 
 app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
     const userId = req.userId;
-    const QUIZ_LENGTH = 10;
+    const QUIZ_LENGTH = 50; // FINAL QUIZ LENGTH SET TO 50
 
     try {
         const userStatusResult = await pool.query("SELECT quiz_status FROM \"users\" WHERE id = $1", [userId]);
@@ -326,7 +328,7 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
             // Check if it's already completed and return a special status
             const completedRows = await pool.query('SELECT score FROM "attempts" WHERE id = $1 AND user_id = $2 AND status = $3', [attemptId, userId, 'completed']);
             if (completedRows.rows.length > 0) {
-                return res.status(200).json({ message: 'Quiz already submitted.', score: completedRows.rows[0].score, totalQuestions: 10 });
+                return res.status(200).json({ message: 'Quiz already submitted.', score: completedRows.rows[0].score, totalQuestions: 50 }); // Note: Hardcoded 50 for consistency
             }
             return res.status(404).json({ message: 'Active quiz attempt not found or invalid user.' });
         }
@@ -372,7 +374,7 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
         res.json({
             message: 'Quiz submitted successfully!',
             score: score,
-            totalQuestions: questionIds.length,
+            totalQuestions: 50, // Note: Hardcoded 50 for consistency
             status: finalQuizStatus
         });
     } catch (error) {
