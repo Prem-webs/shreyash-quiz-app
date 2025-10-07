@@ -144,8 +144,9 @@ app.post('/logout', (req, res) => {
 // Get total participants and all quiz results for admin dashboard metrics
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
     try {
-        const [totalParticipantsRows] = (await pool.query('SELECT COUNT(id) as total FROM "users"')).rows;
-        const totalParticipants = totalParticipantsRows.total;
+        // FIXED: Using COUNT(*) and retrieving the value explicitly for Postgres
+        const totalParticipantsRows = await pool.query('SELECT COUNT(*) AS total FROM "users"');
+        const totalParticipants = parseInt(totalParticipantsRows.rows[0].total); // Parse string to integer
 
         const results = (await pool.query(`
             SELECT 
@@ -160,8 +161,8 @@ app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
             ORDER BY a.score DESC, a.end_time ASC
         `)).rows;
 
-        const [questionCountRows] = (await pool.query('SELECT COUNT(id) as total FROM "questions"')).rows;
-        const totalQuestions = questionCountRows.total;
+        const questionCountRows = await pool.query('SELECT COUNT(id) as total FROM "questions"');
+        const totalQuestions = parseInt(questionCountRows.rows[0].total); // Parse string to integer
         
         res.json({
             totalParticipants: totalParticipants,
@@ -193,6 +194,13 @@ app.post('/admin/questions', isLoggedIn, isAdmin, async (req, res) => {
     }
 
     try {
+        // 1. Check for duplicate question text
+        const duplicateCheck = await pool.query('SELECT id FROM "questions" WHERE "question_text" = $1', [questionText]);
+        if (duplicateCheck.rows.length > 0) {
+            return res.status(409).json({ message: 'A question with this exact text already exists.' });
+        }
+        
+        // 2. Insert new question
         await pool.query(
             'INSERT INTO "questions" ("question_text", "option_a", "option_b", "option_c", "option_d", "correct_option") VALUES ($1, $2, $3, $4, $5, $6)',
             [questionText, optionA, optionB, optionC, optionD, correctOption]
@@ -323,7 +331,7 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
             return res.status(404).json({ message: 'Active quiz attempt not found or invalid user.' });
         }
         
-        // PostgreSQL returns JSON/JSONB fields as JavaScript objects, no need for JSON.parse()
+        // PostgreSQL returns JSON/JSONB fields as JavaScript objects
         const questionIds = attemptRows.rows[0].shuffled_questions;
         
         // 2. Fetch the correct answers for all questions in the quiz
