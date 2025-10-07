@@ -145,8 +145,8 @@ app.post('/logout', (req, res) => {
 // Get total participants and all quiz results for admin dashboard metrics
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
     try {
-        const totalParticipantsRows = (await pool.query('SELECT COUNT(id) as total FROM "users"')).rows;
-        const totalParticipants = parseInt(totalParticipantsRows[0].total, 10);
+        const totalParticipantsRows = (await pool.query('SELECT COUNT(id)::int as total FROM "users"')).rows;
+        const totalParticipants = totalParticipantsRows[0].total;
 
         const results = (await pool.query(`
             SELECT 
@@ -161,8 +161,8 @@ app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
             ORDER BY a.score DESC, a.end_time ASC
         `)).rows;
 
-        const questionCountRows = (await pool.query('SELECT COUNT(id) as total FROM "questions"')).rows;
-        const totalQuestions = parseInt(questionCountRows[0].total, 10);
+        const questionCountRows = (await pool.query('SELECT COUNT(id)::int as total FROM "questions"')).rows;
+        const totalQuestions = questionCountRows[0].total;
         
         res.json({
             totalParticipants: totalParticipants,
