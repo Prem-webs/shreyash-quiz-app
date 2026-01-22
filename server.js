@@ -98,21 +98,53 @@ app.post('/logout', (req, res) => {
 
 // --- ADMIN METRICS (ALL RESULTS) ---
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
-    const results = (await pool.query(`
-        SELECT 
-            u.full_name,
-            u.email,
-            a.score,
-            a.created_at,
-            a.end_time
-        FROM "attempts" a
-        JOIN "users" u ON a.user_id = u.id
-        WHERE a.status = 'completed'
-        ORDER BY a.score DESC, a.end_time ASC
-    `)).rows;
+    try {
+        // Total participants
+        const totalParticipants = (
+            await pool.query('SELECT COUNT(id)::int AS total FROM "users"')
+        ).rows[0].total;
 
-    res.json({ results });
+        // Total questions
+        const totalQuestions = (
+            await pool.query('SELECT COUNT(id)::int AS total FROM "questions"')
+        ).rows[0].total;
+
+        // Completed quizzes
+        const completedQuizzes = (
+            await pool.query(
+                `SELECT COUNT(id)::int AS total FROM "attempts" WHERE status = 'completed'`
+            )
+        ).rows[0].total;
+
+        // All results
+        const results = (
+            await pool.query(`
+                SELECT 
+                    u.full_name,
+                    u.email,
+                    a.score,
+                    a.created_at,
+                    a.end_time
+                FROM "attempts" a
+                JOIN "users" u ON a.user_id = u.id
+                WHERE a.status = 'completed'
+                ORDER BY a.score DESC, a.end_time ASC
+            `)
+        ).rows;
+
+        // ✅ VERY IMPORTANT: exact keys admin.html expects
+        res.json({
+            totalParticipants,
+            totalQuestions,
+            completedQuizzes,
+            results
+        });
+    } catch (error) {
+        console.error('Admin metrics error:', error);
+        res.status(500).json({ message: 'Failed to load admin metrics' });
+    }
 });
+
 
 // --- ADMIN QUESTION CRUD ---
 
