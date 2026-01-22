@@ -29,7 +29,9 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const isLoggedIn = (req, res, next) => {
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
     if (!sessionId || !sessions[sessionId]) {
-        return res.status(401).json({ message: 'Unauthorized' });
+        return req.accepts('html')
+            ? res.redirect('/')
+            : res.status(401).json({ message: 'Unauthorized' });
     }
     req.userId = sessions[sessionId].userId;
     req.userRole = sessions[sessionId].role;
@@ -68,6 +70,7 @@ app.post('/register', async (req, res) => {
 
 app.post('/login', async (req, res) => {
     const { email, password } = req.body;
+
     const result = await pool.query(
         'SELECT id,password_hash,role,quiz_status FROM "users" WHERE email=$1',
         [email]
@@ -90,8 +93,7 @@ app.post('/login', async (req, res) => {
 });
 
 app.post('/logout', isLoggedIn, (req, res) => {
-    const sessionId = req.headers['x-session-id'];
-    delete sessions[sessionId];
+    delete sessions[req.headers['x-session-id']];
     res.json({ message: 'Logged out' });
 });
 
@@ -114,19 +116,7 @@ app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
     res.json({ results });
 });
 
-/* ================= QUESTIONS ================= */
-
-app.get('/questions', isLoggedIn, async (req, res) => {
-    const ids = req.query.ids.split(',').map(Number);
-    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
-    const data = await pool.query(
-        `SELECT id,question_text,option_a,option_b,option_c,option_d FROM "questions" WHERE id IN (${placeholders})`,
-        ids
-    );
-    res.json(data.rows);
-});
-
-/* ================= STUDENT QUIZ ================= */
+/* ================= QUIZ ================= */
 
 app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
     const userId = req.userId;
@@ -149,6 +139,16 @@ app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
     res.json({ attemptId: attempt.rows[0].id, questionIds: ids });
 });
 
+app.get('/questions', isLoggedIn, async (req, res) => {
+    const ids = req.query.ids.split(',').map(Number);
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+    const data = await pool.query(
+        `SELECT id,question_text,option_a,option_b,option_c,option_d FROM "questions" WHERE id IN (${placeholders})`,
+        ids
+    );
+    res.json(data.rows);
+});
+
 app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
     const { attemptId, answers } = req.body;
     const userId = req.userId;
@@ -158,7 +158,9 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
         [attemptId, userId, 'started']
     );
 
-    if (!attempt.rows.length) return res.json({ message: 'Already submitted' });
+    if (!attempt.rows.length) {
+        return res.json({ message: 'Quiz already submitted.' });
+    }
 
     const questionIds = attempt.rows[0].shuffled_questions;
     const placeholders = questionIds.map((_, i) => `$${i + 1}`).join(',');
@@ -186,7 +188,8 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
         ['completed', userId]
     );
 
-    res.json({ message: 'Submitted successfully' });
+    // 🔒 IMPORTANT: NO SCORE SENT TO STUDENT
+    res.json({ message: 'Quiz submitted successfully!' });
 });
 
 /* ================= PAGES ================= */
