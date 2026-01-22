@@ -1,417 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shreyash Polytechnic Quiz</title>
-    <!-- Load Tailwind CSS for styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-        }
-        .option-button {
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        .option-button:hover:not(.selected) {
-            background-color: #f3f4f6;
-        }
-        .selected {
-            background-color: #3b82f6 !important;
-            color: white;
-            border-color: #1d4ed8;
-            font-weight: 600;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Student Quiz</title>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
-    <div class="w-full max-w-2xl bg-white p-8 rounded-xl shadow-2xl border border-gray-100">
-        <header class="text-center mb-6">
-            <h1 class="text-3xl font-bold text-gray-800">Shreyash Polytechnic Quiz</h1>
-        </header>
 
-        <!-- Message Area -->
-        <div id="message-area" class="mb-4 hidden"></div>
-        
-        <!-- Timer and Question Counter -->
-        <div id="quiz-header" class="flex justify-between items-center mb-6 hidden">
-            <div class="text-xl font-semibold text-gray-700">Question <span id="current-question-num">1</span> of <span id="total-questions-num">10</span></div>
-            <div class="text-xl font-bold text-red-600">Time Left: <span id="timer">30:00</span></div>
-        </div>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
 
-        <!-- 1. Ready to Start View -->
-        <div id="start-page" class="text-center py-10">
-            <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Ready to Start?</h2>
-            <p class="text-gray-600 mb-6">You have 30 minutes to complete the quiz. Once you start, you cannot go back.</p>
-            <button id="start-quiz-btn"
-                class="w-full sm:w-1/2 py-3 px-4 border border-transparent rounded-lg shadow-lg text-xl font-medium text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out">
-                Start Quiz
-            </button>
-        </div>
+<div class="bg-white p-6 rounded-xl shadow-xl w-full max-w-xl">
+<h1 class="text-2xl font-bold mb-4 text-center">Quiz</h1>
 
-        <!-- 2. Quiz View -->
-        <div id="quiz-container" class="hidden">
-            <p id="question-text" class="text-2xl font-semibold mb-6 text-gray-800"></p>
-            
-            <div id="options-container" class="space-y-4 mb-8">
-                <!-- Options will be dynamically inserted here -->
-            </div>
+<button id="startBtn" class="bg-green-600 text-white px-4 py-2 rounded w-full">
+Start Quiz
+</button>
 
-            <div id="navigation-container" class="flex justify-between mt-6 pt-4 border-t border-gray-200">
-                <button id="prev-question-btn" disabled
-                    class="py-2 px-4 rounded-lg text-lg font-medium text-white bg-gray-500 hover:bg-gray-600 transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-                    &larr; Previous
-                </button>
-                <button id="next-question-btn"
-                    class="py-2 px-4 rounded-lg text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 ease-in-out">
-                    Next &rarr;
-                </button>
-            </div>
-        </div>
+<div id="quiz" class="hidden mt-4">
+<p id="question"></p>
+<div id="options" class="space-y-2 mt-3"></div>
+<button id="next" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded w-full">
+Next
+</button>
+</div>
 
-        <!-- 3. Results View -->
-        <div id="results-page" class="hidden text-center py-10">
-            <h2 class="text-3xl font-bold text-green-600 mb-4">Quiz Completed!</h2>
-            <p class="text-xl text-gray-700 mb-6">Thank you for participating.</p>
-            
-            <div id="final-score" class="text-4xl font-extrabold text-indigo-700 bg-indigo-50 p-6 rounded-xl inline-block mb-8 shadow-lg">
-                Your Score: <span></span> / <span></span>
-            </div>
+</div>
 
-            <p class="text-gray-600 mb-4">You can now view your rank on the leaderboard.</p>
+<script>
+const API = location.origin;
+const sessionId = new URLSearchParams(location.search).get('sessionId');
+let questions=[], index=0, answers={}, attemptId=null;
 
-            <a id="view-leaderboard-btn" 
-                class="inline-block py-3 px-6 rounded-lg text-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition duration-150 ease-in-out cursor-pointer"
-                href="#">
-                View Leaderboard
-            </a>
-            <a id="logout-btn" 
-                class="inline-block py-3 px-6 rounded-lg text-lg font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150 ease-in-out cursor-pointer"
-                href="http://localhost:3000">
-                Logout
-            </a>
-        </div>
-    </div>
+document.getElementById('startBtn').onclick = async () => {
+    const res = await fetch(`${API}/student/start-quiz`, {
+        method:'POST',
+        headers:{'x-session-id':sessionId}
+    });
+    const data = await res.json();
+    attemptId = data.attemptId;
 
-    <script>
-        const API_BASE_URL = window.location.origin;
-        let sessionId = '';
-        let attemptId = null;
-        let allQuestions = [];
-        let userAnswers = {}; // { questionId: 'A' | 'B' | 'C' | 'D' }
-        let currentQuestionIndex = 0;
-        let quizTimer;
-        const QUIZ_DURATION_MINUTES = 30;
+    const q = await fetch(`${API}/questions?ids=${data.questionIds.join(',')}`, {
+        headers:{'x-session-id':sessionId}
+    });
+    questions = await q.json();
 
-        // --- DOM Elements ---
-        const startPage = document.getElementById('start-page');
-        const quizContainer = document.getElementById('quiz-container');
-        const resultsPage = document.getElementById('results-page');
-        const messageArea = document.getElementById('message-area');
-        const startQuizBtn = document.getElementById('start-quiz-btn');
-        const questionTextElement = document.getElementById('question-text');
-        const optionsContainer = document.getElementById('options-container');
-        const prevBtn = document.getElementById('prev-question-btn');
-        const nextBtn = document.getElementById('next-question-btn');
-        const currentQNum = document.getElementById('current-question-num');
-        const totalQNum = document.getElementById('total-questions-num');
-        const timerElement = document.getElementById('timer');
-        const quizHeader = document.getElementById('quiz-header');
+    document.getElementById('startBtn').classList.add('hidden');
+    document.getElementById('quiz').classList.remove('hidden');
+    render();
+};
 
-        // --- Utility Functions ---
+function render(){
+    const q = questions[index];
+    document.getElementById('question').innerText = q.question_text;
+    const opt = document.getElementById('options');
+    opt.innerHTML='';
+    ['A','B','C','D'].forEach(k=>{
+        const b=document.createElement('button');
+        b.innerText=q[`option_${k.toLowerCase()}`];
+        b.className='block w-full border p-2';
+        b.onclick=()=>answers[q.id]=k;
+        opt.appendChild(b);
+    });
+}
 
-        const displayMessage = (message, isError = false) => {
-            messageArea.textContent = message;
-            messageArea.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
-            if (isError) {
-                messageArea.classList.add('bg-red-100', 'text-red-700');
-            } else {
-                messageArea.classList.add('bg-green-100', 'text-green-700');
-            }
-        };
-
-        const updateNavigationButtons = () => {
-            prevBtn.disabled = currentQuestionIndex === 0;
-            if (currentQuestionIndex === allQuestions.length - 1) {
-                nextBtn.textContent = 'Submit Quiz';
-                nextBtn.classList.remove('bg-indigo-600');
-                nextBtn.classList.add('bg-red-600');
-            } else {
-                nextBtn.textContent = 'Next →';
-                nextBtn.classList.add('bg-indigo-600');
-                nextBtn.classList.remove('bg-red-600');
-            }
-        };
-
-        const startTimer = (duration, display) => {
-            let timer = duration, minutes, seconds;
-            quizTimer = setInterval(() => {
-                minutes = parseInt(timer / 60, 10);
-                seconds = parseInt(timer % 60, 10);
-
-                minutes = minutes < 10 ? "0" + minutes : minutes;
-                seconds = seconds < 10 ? "0" + seconds : seconds;
-
-                display.textContent = minutes + ":" + seconds;
-
-                if (--timer < 0) {
-                    clearInterval(quizTimer);
-                    displayMessage("Time's up! Submitting your answers automatically...", true);
-                    submitQuiz();
-                }
-            }, 1000);
-        };
-
-        // --- Core Quiz Logic ---
-
-        const renderQuestion = () => {
-            if (allQuestions.length === 0) {
-                questionTextElement.textContent = "No questions loaded.";
-                return;
-            }
-
-            const question = allQuestions[currentQuestionIndex];
-            questionTextElement.textContent = `${currentQuestionIndex + 1}. ${question.question_text}`;
-            optionsContainer.innerHTML = ''; // Clear previous options
-
-            const optionsMap = { A: question.option_a, B: question.option_b, C: question.option_c, D: question.option_d };
-            const currentAnswer = userAnswers[question.id];
-
-            ['A', 'B', 'C', 'D'].forEach(key => {
-                const text = optionsMap[key];
-                const button = document.createElement('button');
-                button.textContent = `${key}. ${text}`;
-                button.dataset.option = key;
-                button.classList.add(
-                    'option-button', 
-                    'w-full', 'py-3', 'px-4', 'border', 'border-gray-300', 
-                    'rounded-lg', 'text-lg', 'text-left', 'text-gray-800'
-                );
-                
-                if (currentAnswer === key) {
-                    button.classList.add('selected');
-                }
-
-                button.addEventListener('click', (e) => {
-                    // Remove selection from all buttons
-                    optionsContainer.querySelectorAll('.option-button').forEach(btn => btn.classList.remove('selected'));
-                    // Select the clicked button
-                    e.target.classList.add('selected');
-                    // Store the answer
-                    userAnswers[question.id] = key;
-                    console.log(`Answered Q${question.id}: ${key}`);
-                });
-
-                optionsContainer.appendChild(button);
-            });
-
-            currentQNum.textContent = currentQuestionIndex + 1;
-            totalQNum.textContent = allQuestions.length;
-            updateNavigationButtons();
-        };
-
-        const fetchQuestions = async (ids) => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/questions?ids=${ids.join(',')}`, {
-                    method: 'GET',
-                    headers: { 'x-session-id': sessionId },
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Failed to fetch questions: ${response.statusText}. Server message: ${errorText}`);
-                }
-
-                allQuestions = await response.json();
-                if (allQuestions.length > 0) {
-                    renderQuestion();
-                    startPage.classList.add('hidden');
-                    quizContainer.classList.remove('hidden');
-                    quizHeader.classList.remove('hidden');
-                    startTimer(QUIZ_DURATION_MINUTES * 60, timerElement);
-                } else {
-                    displayMessage("Server returned 0 questions. Please contact administrator.", true);
-                }
-
-            } catch (error) {
-                console.error("Error fetching question content:", error);
-                displayMessage("Error loading quiz questions. Please contact administrator.", true);
-                // Redirect back to login if unauthorized
-                if (error.message && error.message.includes("401")) {
-                     window.location.href = `${API_BASE_URL}/?error=unauthorized`;
-                }
-            }
-        };
-
-        const submitQuiz = async (isCheating = false) => {
-            if (quizTimer) {
-                clearInterval(quizTimer); // Stop the timer
-            }
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/student/submit-answers`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'x-session-id': sessionId 
-                    },
-                    body: JSON.stringify({
-                        attemptId: attemptId,
-                        answers: userAnswers
-                    }),
-                });
-
-                const result = await response.json();
-
-                if (response.ok || response.status === 200) {
-                    // Success: Store score and display results
-                    
-                    if (isCheating) {
-                        // If cheating, the server still completed the attempt. Now force logout.
-                        await fetch(`${API_BASE_URL}/logout`, {
-                            method: 'POST',
-                            headers: { 'x-session-id': sessionId }
-                        });
-                        localStorage.removeItem('sessionId');
-                        alert("CHEATING DETECTED! Your quiz has been automatically submitted and you have been logged out.");
-                        window.location.href = `${API_BASE_URL}/?cheated=true`;
-                        return;
-                    }
-                    
-                    // Normal submission flow
-                    quizContainer.classList.add('hidden');
-                    quizHeader.classList.add('hidden');
-                    resultsPage.classList.remove('hidden');
-                    document.querySelector('#final-score span:first-child').textContent = result.score;
-                    document.querySelector('#final-score span:last-child').textContent = result.totalQuestions;
-                    
-                    document.getElementById('view-leaderboard-btn').href = `${API_BASE_URL}/leaderboard.html?sessionId=${sessionId}`;
-
-                } else {
-                    // This executes if the server returns a 4xx or 5xx code (error on submit)
-                    if (isCheating) {
-                        // Fail silently if cheating, as we need to logout anyway
-                        return;
-                    }
-                    displayMessage(`Submission failed: ${result.message || 'Server error occurred while submitting the quiz.'}. Please try again.`, true);
-                    alert(`Submission failed: ${result.message || 'Server error occurred while submitting the quiz.'}. Please contact administrator.`);
-                }
-            } catch (error) {
-                console.error('Submission error:', error);
-                if (!isCheating) {
-                    displayMessage("Submission failed due to a network error. Please check your connection.", true);
-                    alert("Submission failed due to a network error. Please contact administrator.");
-                }
-            }
-        };
-
-        const startQuiz = async () => {
-            displayMessage("", false); // Clear message area
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/student/start-quiz`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    attemptId = result.attemptId;
-                    const questionIds = result.questionIds;
-                    await fetchQuestions(questionIds); // Fetch and render first question
-
-                } else if (response.status === 409) { // 409 Conflict: Quiz in progress
-                    displayMessage(result.message, true);
-                } else {
-                    displayMessage(result.message || 'An error occurred while starting the quiz.', true);
-                }
-            } catch (error) {
-                console.error('Start Quiz Fetch Error:', error);
-                displayMessage('An error occurred while starting the quiz.', true);
-            }
-        };
-
-        // --- Anti-Cheating Handlers ---
-        
-        const handleCheatingAttempt = async () => {
-            // Only proceed if a quiz is actually active (not hidden)
-            if (attemptId && quizContainer.classList.contains('hidden') === false) {
-                // Remove listeners to prevent recursive calls
-                window.removeEventListener('popstate', handleCheatingAttempt);
-                document.removeEventListener('visibilitychange', handleCheatingAttempt);
-                
-                // Submit the quiz immediately (this will also force logout via the submitQuiz function)
-                await submitQuiz(true); 
-            }
-        };
-
-
-        // --- Event Listeners ---
-
-        prevBtn.addEventListener('click', () => {
-            if (currentQuestionIndex > 0) {
-                currentQuestionIndex--;
-                renderQuestion();
-            }
+document.getElementById('next').onclick = async ()=>{
+    if(index < questions.length-1){
+        index++; render();
+    }else{
+        await fetch(`${API}/student/submit-answers`,{
+            method:'POST',
+            headers:{'Content-Type':'application/json','x-session-id':sessionId},
+            body:JSON.stringify({attemptId,answers})
         });
 
-        nextBtn.addEventListener('click', () => {
-            if (currentQuestionIndex < allQuestions.length - 1) {
-                currentQuestionIndex++;
-                renderQuestion();
-            } else if (currentQuestionIndex === allQuestions.length - 1) {
-                // Last question, perform submission
-                submitQuiz();
-            }
+        await fetch(`${API}/logout`,{
+            method:'POST',
+            headers:{'x-session-id':sessionId}
         });
 
-        startQuizBtn.addEventListener('click', startQuiz);
-
-        // --- Initialization ---
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            sessionId = urlParams.get('sessionId') || localStorage.getItem('sessionId');
-
-            if (!sessionId) {
-                // If no session ID, redirect to login page
-                window.location.href = `${API_BASE_URL}/?error=unauthorized`;
-                return;
-            }
-
-            // Set the logout button URL and handler
-            document.getElementById('logout-btn').addEventListener('click', async (e) => {
-                e.preventDefault();
-                await fetch(`${API_BASE_URL}/logout`, {
-                    method: 'POST',
-                    headers: { 'x-session-id': sessionId }
-                });
-                localStorage.removeItem('sessionId');
-                window.location.href = `${API_BASE_URL}/`;
-            });
-            
-            // Set the leaderboard button URL
-            document.getElementById('view-leaderboard-btn').href = `${API_BASE_URL}/leaderboard.html?sessionId=${sessionId}`;
-
-            // --- ANTI-CHEATING ACTIVATION (Client Side) ---
-            
-            // Event listener for tab/window change (Focus Loss)
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'hidden') {
-                    // User switched tabs or minimized the browser
-                    handleCheatingAttempt();
-                }
-            });
-
-            // Browser Back/Forward prevention (Best effort)
-            history.pushState(null, null, location.href);
-            window.addEventListener('popstate', handleCheatingAttempt);
-        });
-        
-    </script>
+        alert('Quiz submitted successfully');
+        location.href = '/';
+    }
+};
+</script>
 </body>
 </html>
