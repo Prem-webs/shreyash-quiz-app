@@ -24,25 +24,22 @@ const sessions = {};
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Helper function to check login status
+// --- Auth Helpers ---
 const isLoggedIn = (req, res, next) => {
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
-
     if (!sessionId || !sessions[sessionId]) {
         return req.accepts('html')
             ? res.redirect('/')
-            : res.status(401).json({ message: 'Unauthorized. Please log in.' });
+            : res.status(401).json({ message: 'Unauthorized' });
     }
-
     req.userId = sessions[sessionId].userId;
     req.userRole = sessions[sessionId].role;
     next();
 };
 
-// Helper function to check admin role
 const isAdmin = (req, res, next) => {
     if (req.userRole !== 'admin') {
-        return res.status(403).json({ message: 'Forbidden. Admin access required.' });
+        return res.status(403).json({ message: 'Admin access required' });
     }
     next();
 };
@@ -52,21 +49,20 @@ const isAdmin = (req, res, next) => {
 app.post('/register', async (req, res) => {
     const { fullName, email, password } = req.body;
     if (!fullName || !email || !password) {
-        return res.status(400).json({ message: 'All fields are required.' });
+        return res.status(400).json({ message: 'All fields required' });
     }
-
     try {
-        const passwordHash = await bcrypt.hash(password, 10);
+        const hash = await bcrypt.hash(password, 10);
         await pool.query(
             'INSERT INTO "users" ("full_name","email","password_hash","role","quiz_status") VALUES ($1,$2,$3,$4,$5)',
-            [fullName, email, passwordHash, 'student', 'unattempted']
+            [fullName, email, hash, 'student', 'unattempted']
         );
-        res.status(201).json({ message: 'Registration successful.' });
-    } catch (error) {
-        if (error.code === '23505') {
-            return res.status(409).json({ message: 'Email already registered.' });
+        res.json({ message: 'Registered successfully' });
+    } catch (e) {
+        if (e.code === '23505') {
+            return res.status(409).json({ message: 'Email already exists' });
         }
-        res.status(500).json({ message: 'Server error during registration.' });
+        res.status(500).json({ message: 'Registration error' });
     }
 });
 
@@ -79,14 +75,14 @@ app.post('/login', async (req, res) => {
     );
 
     const user = result.rows[0];
-    if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
+    if (!user) return res.status(401).json({ message: 'Invalid login' });
 
     if (user.role === 'student' && ['completed', 'disqualified'].includes(user.quiz_status)) {
-        return res.status(403).json({ message: 'Quiz already completed.' });
+        return res.status(403).json({ message: 'Quiz already completed' });
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) return res.status(401).json({ message: 'Invalid email or password.' });
+    if (!match) return res.status(401).json({ message: 'Invalid login' });
 
     const sessionId = `s_${user.id}_${Date.now()}`;
     sessions[sessionId] = { userId: user.id, role: user.role };
@@ -97,10 +93,10 @@ app.post('/login', async (req, res) => {
 app.post('/logout', (req, res) => {
     const sessionId = req.headers['x-session-id'];
     if (sessionId) delete sessions[sessionId];
-    res.json({ message: 'Logged out successfully.' });
+    res.json({ message: 'Logged out' });
 });
 
-// --- ADMIN METRICS (UNCHANGED) ---
+// --- ADMIN METRICS (ALL RESULTS) ---
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
     const results = (await pool.query(`
         SELECT 
@@ -111,49 +107,75 @@ app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
             a.end_time
         FROM "attempts" a
         JOIN "users" u ON a.user_id = u.id
-        WHERE a.status='completed'
+        WHERE a.status = 'completed'
         ORDER BY a.score DESC, a.end_time ASC
     `)).rows;
 
     res.json({ results });
 });
 
-// --- STUDENT QUIZ ROUTES (UNCHANGED LOGIC) ---
+// --- ADMIN QUESTION CRUD ---
+
+app.get('/admin/questions', isLoggedIn, isAdmin, async (req, res) => {
+    const q = await pool.query('SELECT * FROM "questions" ORDER BY id DESC');
+    res.json(q.rows);
+});
+
+app.post('/admin/questions', isLoggedIn, isAdmin, async (req, res) => {
+    const { questionText, optionA, optionB, optionC, optionD, correctOption } = req.body;
+
+    if (!questionText || !optionA || !optionB || !optionC || !optionD || !correctOption) {
+        return res.status(400).json({ message: 'All fields required' });
+    }
+
+    await pool.query(
+        'INSERT INTO "questions" ("question_text","option_a","option_b","option_c","option_d","correct_option") VALUES ($1,$2,$3,$4,$5,$6)',
+        [questionText, optionA, optionB, optionC, optionD, correctOption]
+    );
+
+    res.json({ message: 'Question added' });
+});
+
+app.delete('/admin/questions/:id', isLoggedIn, isAdmin, async (req, res) => {
+    await pool.query('DELETE FROM "questions" WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Question deleted' });
+});
+
+// --- STUDENT QUIZ ---
 
 app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
     const userId = req.userId;
     const QUIZ_LENGTH = 50;
 
-    const allQuestions = (await pool.query('SELECT id FROM "questions"')).rows;
-    if (allQuestions.length < QUIZ_LENGTH) {
-        return res.status(400).json({ message: 'Not enough questions.' });
+    const all = (await pool.query('SELECT id FROM "questions"')).rows;
+    if (all.length < QUIZ_LENGTH) {
+        return res.status(400).json({ message: 'Not enough questions' });
     }
 
-    const questionIds = allQuestions
-        .map(q => q.id)
-        .sort(() => 0.5 - Math.random())
-        .slice(0, QUIZ_LENGTH);
+    const ids = all.map(q => q.id).sort(() => 0.5 - Math.random()).slice(0, QUIZ_LENGTH);
 
     await pool.query('UPDATE "users" SET quiz_status=$1 WHERE id=$2', ['started', userId]);
 
     const attempt = await pool.query(
         'INSERT INTO "attempts" ("user_id","shuffled_questions","status") VALUES ($1,$2,$3) RETURNING id',
-        [userId, JSON.stringify(questionIds), 'started']
+        [userId, JSON.stringify(ids), 'started']
     );
 
-    res.json({ attemptId: attempt.rows[0].id, questionIds });
+    res.json({ attemptId: attempt.rows[0].id, questionIds: ids });
 });
 
+// ✅ IMPORTANT: ORDER PRESERVED (FIX FOR CURRENT QUESTION)
 app.get('/questions', isLoggedIn, async (req, res) => {
-    const ids = req.query.ids.split(',').map(Number);
-    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+    const idArray = req.query.ids.split(',').map(id => parseInt(id)).filter(Boolean);
+    const placeholders = idArray.map((_, i) => `$${i + 1}`).join(',');
 
-    const questions = await pool.query(
+    const result = await pool.query(
         `SELECT id,question_text,option_a,option_b,option_c,option_d FROM "questions" WHERE id IN (${placeholders})`,
-        ids
+        idArray
     );
 
-    res.json(questions.rows);
+    const ordered = idArray.map(id => result.rows.find(q => q.id === id));
+    res.json(ordered.filter(Boolean));
 });
 
 app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
@@ -169,19 +191,19 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
         return res.json({ message: 'Quiz already submitted.' });
     }
 
-    const questionIds = attempt.rows[0].shuffled_questions;
-    const placeholders = questionIds.map((_, i) => `$${i + 1}`).join(',');
+    const ids = attempt.rows[0].shuffled_questions;
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
 
     const correct = (await pool.query(
         `SELECT id,correct_option FROM "questions" WHERE id IN (${placeholders})`,
-        questionIds
+        ids
     )).rows;
 
     let score = 0;
     const map = {};
     correct.forEach(q => map[q.id] = q.correct_option);
 
-    questionIds.forEach(id => {
+    ids.forEach(id => {
         if (answers[id] && answers[id] === map[id]) score++;
     });
 
@@ -195,49 +217,34 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
         ['completed', userId]
     );
 
-    // ✅ STUDENT DOES NOT RECEIVE SCORE
+    // ❌ STUDENT DOES NOT RECEIVE SCORE
     res.json({ message: 'Quiz submitted successfully!' });
 });
 
-// ===============================
-// 🔐 LEADERBOARD (ADMIN ONLY)
-// ===============================
-
-// ✅ ADMIN ONLY leaderboard API
+// --- LEADERBOARD (ADMIN ONLY) ---
 app.get('/leaderboard-data', isLoggedIn, isAdmin, async (req, res) => {
-    const topScores = (await pool.query(`
-        SELECT 
-            u.full_name,
-            a.score,
-            a.created_at
+    const rows = (await pool.query(`
+        SELECT u.full_name, a.score, a.created_at
         FROM "attempts" a
         JOIN "users" u ON a.user_id = u.id
-        WHERE a.status = 'completed'
+        WHERE a.status='completed'
         ORDER BY a.score DESC, a.end_time ASC
         LIMIT 10
     `)).rows;
 
-    res.json(topScores);
+    res.json(rows);
 });
 
-// ✅ ADMIN ONLY leaderboard page
 app.get('/leaderboard.html', isLoggedIn, isAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'leaderboard.html'));
 });
 
 // --- PAGES ---
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/admin.html', isLoggedIn, isAdmin, (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+app.get('/student.html', isLoggedIn, (req, res) => res.sendFile(path.join(__dirname, 'student.html')));
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-app.get('/admin.html', isLoggedIn, isAdmin, (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin.html'));
-});
-app.get('/student.html', isLoggedIn, (req, res) => {
-    res.sendFile(path.join(__dirname, 'student.html'));
-});
-
-// --- SERVER START ---
+// --- START ---
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
