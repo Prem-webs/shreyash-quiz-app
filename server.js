@@ -7,64 +7,69 @@ const path = require('path');
 
 dotenv.config();
 
+// --- Variable Initialization ---
 const app = express();
 const port = 3000;
 
-/* ================= DATABASE ================= */
-
+// --- PostgreSQL Connection Pool Setup ---
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgres://user:password@localhost:5432/quiz_competition',
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-/* ================= SESSION ================= */
-
+// --- Simple Session Storage (In-Memory) ---
 const sessions = {};
 
-/* ================= MIDDLEWARE ================= */
-
+// --- Middleware setup ---
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Helper function to check login status
 const isLoggedIn = (req, res, next) => {
     const sessionId = req.headers['x-session-id'] || req.query.sessionId;
+
     if (!sessionId || !sessions[sessionId]) {
         return req.accepts('html')
             ? res.redirect('/')
-            : res.status(401).json({ message: 'Unauthorized' });
+            : res.status(401).json({ message: 'Unauthorized. Please log in.' });
     }
+
     req.userId = sessions[sessionId].userId;
     req.userRole = sessions[sessionId].role;
     next();
 };
 
+// Helper function to check admin role
 const isAdmin = (req, res, next) => {
     if (req.userRole !== 'admin') {
-        return res.status(403).json({ message: 'Admin only' });
+        return res.status(403).json({ message: 'Forbidden. Admin access required.' });
     }
     next();
 };
 
-/* ================= AUTH ================= */
+// --- AUTHENTICATION ROUTES ---
 
 app.post('/register', async (req, res) => {
     const { fullName, email, password } = req.body;
+
     if (!fullName || !email || !password) {
-        return res.status(400).json({ message: 'All fields required' });
+        return res.status(400).json({ message: 'All fields are required.' });
     }
 
     try {
-        const hash = await bcrypt.hash(password, 10);
+        const passwordHash = await bcrypt.hash(password, 10);
+
         await pool.query(
             'INSERT INTO "users" ("full_name","email","password_hash","role","quiz_status") VALUES ($1,$2,$3,$4,$5)',
-            [fullName, email, hash, 'student', 'unattempted']
+            [fullName, email, passwordHash, 'student', 'unattempted']
         );
-        res.json({ message: 'Registered successfully' });
-    } catch (e) {
-        if (e.code === '23505') {
-            return res.status(409).json({ message: 'Email already exists' });
+
+        res.status(201).json({ message: 'Registration successful.' });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ message: 'Email already registered.' });
         }
-        res.status(500).json({ message: 'Registration error' });
+        res.status(500).json({ message: 'Server error during registration.' });
     }
 });
 
@@ -77,14 +82,14 @@ app.post('/login', async (req, res) => {
     );
 
     const user = result.rows[0];
-    if (!user) return res.status(401).json({ message: 'Invalid login' });
+    if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
 
     if (user.role === 'student' && ['completed', 'disqualified'].includes(user.quiz_status)) {
-        return res.status(403).json({ message: 'Quiz already completed' });
+        return res.status(403).json({ message: 'Quiz already completed.' });
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) return res.status(401).json({ message: 'Invalid login' });
+    if (!match) return res.status(401).json({ message: 'Invalid email or password.' });
 
     const sessionId = `s_${user.id}_${Date.now()}`;
     sessions[sessionId] = { userId: user.id, role: user.role };
@@ -92,31 +97,36 @@ app.post('/login', async (req, res) => {
     res.json({ sessionId, role: user.role });
 });
 
-app.post('/logout', isLoggedIn, (req, res) => {
-    delete sessions[req.headers['x-session-id']];
-    res.json({ message: 'Logged out' });
+app.post('/logout', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    if (sessionId) delete sessions[sessionId];
+    res.json({ message: 'Logged out successfully.' });
 });
 
-/* ================= ADMIN ================= */
+// --- ADMIN DASHBOARD (ONLY PLACE RESULTS ARE SHOWN) ---
 
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
-    const results = (await pool.query(`
-        SELECT 
-            u.full_name,
-            u.email,
-            a.score,
-            a.created_at,
-            a.end_time
-        FROM "attempts" a
-        JOIN "users" u ON u.id = a.user_id
-        WHERE a.status='completed'
-        ORDER BY a.created_at DESC
-    `)).rows;
+    try {
+        const results = (await pool.query(`
+            SELECT 
+                u.full_name,
+                u.email,
+                a.score,
+                a.created_at,
+                a.end_time
+            FROM "attempts" a
+            JOIN "users" u ON a.user_id = u.id
+            WHERE a.status = 'completed'
+            ORDER BY a.score DESC, a.end_time ASC
+        `)).rows;
 
-    res.json({ results });
+        res.json({ results });
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching admin metrics.' });
+    }
 });
 
-/* ================= QUIZ ================= */
+// --- STUDENT QUIZ ROUTES ---
 
 app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
     const userId = req.userId;
@@ -124,10 +134,10 @@ app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
 
     const questions = (await pool.query('SELECT id FROM "questions"')).rows;
     if (questions.length < QUIZ_LENGTH) {
-        return res.status(400).json({ message: 'Not enough questions' });
+        return res.status(400).json({ message: 'Not enough questions.' });
     }
 
-    const ids = questions.map(q => q.id).sort(() => Math.random() - 0.5).slice(0, QUIZ_LENGTH);
+    const ids = questions.map(q => q.id).sort(() => 0.5 - Math.random()).slice(0, QUIZ_LENGTH);
 
     await pool.query('UPDATE "users" SET quiz_status=$1 WHERE id=$2', ['started', userId]);
 
@@ -142,10 +152,12 @@ app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
 app.get('/questions', isLoggedIn, async (req, res) => {
     const ids = req.query.ids.split(',').map(Number);
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+
     const data = await pool.query(
         `SELECT id,question_text,option_a,option_b,option_c,option_d FROM "questions" WHERE id IN (${placeholders})`,
         ids
     );
+
     res.json(data.rows);
 });
 
@@ -188,17 +200,34 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
         ['completed', userId]
     );
 
-    // 🔒 IMPORTANT: NO SCORE SENT TO STUDENT
+    // ❌ NO SCORE RETURNED TO STUDENT
     res.json({ message: 'Quiz submitted successfully!' });
 });
 
-/* ================= PAGES ================= */
+// --- LEADERBOARD (DISABLED COMPLETELY) ---
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/student.html', isLoggedIn, (req, res) => res.sendFile(path.join(__dirname, 'student.html')));
-app.get('/admin.html', isLoggedIn, isAdmin, (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+app.get('/leaderboard-data', isLoggedIn, (req, res) => {
+    // Leaderboard intentionally disabled
+    return res.json([]);
+});
 
-/* ================= START ================= */
+app.get('/leaderboard.html', isLoggedIn, (req, res) => {
+    return res.status(404).send('Leaderboard disabled');
+});
+
+// --- PAGES ---
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+app.get('/admin.html', isLoggedIn, isAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
+app.get('/student.html', isLoggedIn, (req, res) => {
+    res.sendFile(path.join(__dirname, 'student.html'));
+});
+
+// --- SERVER START ---
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
