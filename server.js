@@ -47,23 +47,20 @@ const isAdmin = (req, res, next) => {
     next();
 };
 
-// --- AUTHENTICATION ROUTES ---
+// --- AUTH ROUTES ---
 
 app.post('/register', async (req, res) => {
     const { fullName, email, password } = req.body;
-
     if (!fullName || !email || !password) {
         return res.status(400).json({ message: 'All fields are required.' });
     }
 
     try {
         const passwordHash = await bcrypt.hash(password, 10);
-
         await pool.query(
             'INSERT INTO "users" ("full_name","email","password_hash","role","quiz_status") VALUES ($1,$2,$3,$4,$5)',
             [fullName, email, passwordHash, 'student', 'unattempted']
         );
-
         res.status(201).json({ message: 'Registration successful.' });
     } catch (error) {
         if (error.code === '23505') {
@@ -103,62 +100,60 @@ app.post('/logout', (req, res) => {
     res.json({ message: 'Logged out successfully.' });
 });
 
-// --- ADMIN DASHBOARD (ONLY PLACE RESULTS ARE SHOWN) ---
-
+// --- ADMIN METRICS (UNCHANGED) ---
 app.get('/admin/metrics', isLoggedIn, isAdmin, async (req, res) => {
-    try {
-        const results = (await pool.query(`
-            SELECT 
-                u.full_name,
-                u.email,
-                a.score,
-                a.created_at,
-                a.end_time
-            FROM "attempts" a
-            JOIN "users" u ON a.user_id = u.id
-            WHERE a.status = 'completed'
-            ORDER BY a.score DESC, a.end_time ASC
-        `)).rows;
+    const results = (await pool.query(`
+        SELECT 
+            u.full_name,
+            u.email,
+            a.score,
+            a.created_at,
+            a.end_time
+        FROM "attempts" a
+        JOIN "users" u ON a.user_id = u.id
+        WHERE a.status='completed'
+        ORDER BY a.score DESC, a.end_time ASC
+    `)).rows;
 
-        res.json({ results });
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching admin metrics.' });
-    }
+    res.json({ results });
 });
 
-// --- STUDENT QUIZ ROUTES ---
+// --- STUDENT QUIZ ROUTES (UNCHANGED LOGIC) ---
 
 app.post('/student/start-quiz', isLoggedIn, async (req, res) => {
     const userId = req.userId;
     const QUIZ_LENGTH = 50;
 
-    const questions = (await pool.query('SELECT id FROM "questions"')).rows;
-    if (questions.length < QUIZ_LENGTH) {
+    const allQuestions = (await pool.query('SELECT id FROM "questions"')).rows;
+    if (allQuestions.length < QUIZ_LENGTH) {
         return res.status(400).json({ message: 'Not enough questions.' });
     }
 
-    const ids = questions.map(q => q.id).sort(() => 0.5 - Math.random()).slice(0, QUIZ_LENGTH);
+    const questionIds = allQuestions
+        .map(q => q.id)
+        .sort(() => 0.5 - Math.random())
+        .slice(0, QUIZ_LENGTH);
 
     await pool.query('UPDATE "users" SET quiz_status=$1 WHERE id=$2', ['started', userId]);
 
     const attempt = await pool.query(
         'INSERT INTO "attempts" ("user_id","shuffled_questions","status") VALUES ($1,$2,$3) RETURNING id',
-        [userId, JSON.stringify(ids), 'started']
+        [userId, JSON.stringify(questionIds), 'started']
     );
 
-    res.json({ attemptId: attempt.rows[0].id, questionIds: ids });
+    res.json({ attemptId: attempt.rows[0].id, questionIds });
 });
 
 app.get('/questions', isLoggedIn, async (req, res) => {
     const ids = req.query.ids.split(',').map(Number);
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
 
-    const data = await pool.query(
+    const questions = await pool.query(
         `SELECT id,question_text,option_a,option_b,option_c,option_d FROM "questions" WHERE id IN (${placeholders})`,
         ids
     );
 
-    res.json(data.rows);
+    res.json(questions.rows);
 });
 
 app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
@@ -200,19 +195,34 @@ app.post('/student/submit-answers', isLoggedIn, async (req, res) => {
         ['completed', userId]
     );
 
-    // ❌ NO SCORE RETURNED TO STUDENT
+    // ✅ STUDENT DOES NOT RECEIVE SCORE
     res.json({ message: 'Quiz submitted successfully!' });
 });
 
-// --- LEADERBOARD (DISABLED COMPLETELY) ---
+// ===============================
+// 🔐 LEADERBOARD (ADMIN ONLY)
+// ===============================
 
-app.get('/leaderboard-data', isLoggedIn, (req, res) => {
-    // Leaderboard intentionally disabled
-    return res.json([]);
+// ✅ ADMIN ONLY leaderboard API
+app.get('/leaderboard-data', isLoggedIn, isAdmin, async (req, res) => {
+    const topScores = (await pool.query(`
+        SELECT 
+            u.full_name,
+            a.score,
+            a.created_at
+        FROM "attempts" a
+        JOIN "users" u ON a.user_id = u.id
+        WHERE a.status = 'completed'
+        ORDER BY a.score DESC, a.end_time ASC
+        LIMIT 10
+    `)).rows;
+
+    res.json(topScores);
 });
 
-app.get('/leaderboard.html', isLoggedIn, (req, res) => {
-    return res.status(404).send('Leaderboard disabled');
+// ✅ ADMIN ONLY leaderboard page
+app.get('/leaderboard.html', isLoggedIn, isAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'leaderboard.html'));
 });
 
 // --- PAGES ---
@@ -228,7 +238,6 @@ app.get('/student.html', isLoggedIn, (req, res) => {
 });
 
 // --- SERVER START ---
-
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
